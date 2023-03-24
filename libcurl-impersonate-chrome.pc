@@ -1,0 +1,8 @@
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+
+Name: libcurl-impersonate-chrome
+Description: The libcurl-impersonate-chrome library
+Version: 1.0.0
+Libs: -L${libdir} -lcurl-impersonate-chrome
