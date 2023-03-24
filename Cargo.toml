@@ -10,7 +10,7 @@ keywords = ["scraping", "fingerprinting"]
 categories = ["web-programming::http-client"]
 
 [dependencies]
-ratmom = { git = "https://codeberg.org/transcast/ratmom.git", features = ["impersonate-chrome", "text-decoding"], default-features = false, version = "1.0.0" }
+ratmom = { git = "https://codeberg.org/transcast/ratmom.git", features = ["impersonate-chrome", "text-decoding"], default-features = false, version = "0.1.0" }
 async-trait = ">=0.1.67"
 tokio = { version = ">=1.26.0",   features = ["full"] }
 serde = { version = ">=1.0.126", features = ["derive"] }
