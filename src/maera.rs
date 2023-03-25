@@ -64,11 +64,9 @@ impl<T: JobHandler> Maera<T> {
         let response_future = self.client.send_async(req);
         match response_future.await {
             Ok(mut response) => {
-                println!("response: {:?}", response);
                 handler.on_success(&mut response).await;
             }
             Err(err) => {
-                println!("err_ response: {:?}", err);
                 handler.on_error(err).await;
             }
         }
