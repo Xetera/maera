@@ -47,3 +47,10 @@ fn main () {
 It's recommended to not change the headers for the request too much as the order and values of headers are used for fingerprinting purposes, so a lot of them like `user-agent` are hardcoded.
 
 > Warning, I have no idea how to build rust libraries (as you can tell from the type signature of traits). If you run into this and want to improve the API, feel free to open a PR.
+
+
+## What's up with the name maera?
+
+She's one of the main characters in the [Destiny's Crucible series](https://www.goodreads.com/book/show/30985483-cast-under-an-alien-sun). Highly recommended read!
+
+![Book cover](https://images-na.ssl-images-amazon.com/images/S/compressed.photo.goodreads.com/books/1468198764i/30985483.jpg)
