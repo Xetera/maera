@@ -4,52 +4,56 @@ A simple interval-based site monitor that bypasses TLS fingerprinting on sites.
 
 ```rs
 use async_trait::async_trait;
-use maera::{
-    AsyncBody, AsyncJob, AsyncReadResponseExt, AsyncScheduler, Interval, Job, JobHandler, Maera,
-    Method,
-};
-use serde_json::Value;
+use maera::*;
+use serde_json::{from_str, to_string_pretty, Value};
+use std::time::Duration;
 
-// Define the struct that represents the site you're monitoring
-#[derive(Clone)]
 struct Peet;
 
 #[async_trait]
 impl JobHandler for Peet {
-    // The target website that's going to be requested
-    fn target(&self) -> maera::MaeraRequest {
-        maera::Request::builder()
-            .method(Method::GET)
-            .uri("https://tls.peet.ws/api/all")
-            .body(AsyncBody::empty())
-            .unwrap()
+    fn request(&self, builder: ChainableRequestBuilder) -> ChainableRequest {
+        builder.url("/api/all").build()
     }
-    fn schedule<'a>(&self, scheduler: &'a mut AsyncScheduler) -> &'a mut AsyncJob {
-        scheduler.every(Interval::Seconds(2))
+    fn wait(&self) -> Duration {
+        Duration::from_secs(60)
     }
-    async fn on_success(&self, response: &mut maera::MaeraResponse) {
+    async fn on_success(&self, response: &mut MaeraResponse) -> Decision {
         // get JSON from response text
-        let text = serde_json::from_str::<Value>(&response.text().await.unwrap()).unwrap();
-        println!("{}", serde_json::to_string_pretty(&text).unwrap());
-    }
-    async fn on_error(&self, error: maera::MaeraError) {
-        println!("error: {:?}", error);
+        let body = response.text().await.unwrap();
+        let json = from_str::<Value>(&body).unwrap();
+        println!("{}", to_string_pretty(&json).unwrap());
+        Decision::Continue
     }
 }
 
-fn main () {
-  let maera = Maera::new(vec![Job { handler: Peet, name: "tls.peet.ws" }]);
+#[tokio::main]
+async fn main() {
+    let job = JobBuilder::new()
+        .base_url("https://tls.peet.ws")
+        .handler(Peet)
+        .build();
+    let maera = Maera::new(vec![job]);
 
-  maera.start().await.unwrap();
+    maera.start().await.unwrap();
 }
+```
+
+## Impersonating Browsers
+
+If you're experienced with systems programming, you might expect that libcurl-impersonate-chrome.so is statically linked and shipped with the library itself to have fine control over the fingerprints. However, I'm not, and I don't know how to do it! So you're expected to preload it with the following command when running your binary.
+
+Assuming your shared library lives inside `/usr/local/lib`, you can set the following env variables to preload [the required libraries](https://github.com/lwthiker/curl-impersonate/releases/latest)
+
+```
+LD_PRELOAD="/usr/local/lib/libcurl-impersonate-chrome.so" CURL_IMPERSONATE=chrome111 ./your/binary
 ```
 
 It's recommended to not change the headers for the request too much as the order and values of headers are used for fingerprinting purposes, so a lot of them like `user-agent` are hardcoded.
 
 > Warning, I have no idea how to build rust libraries (as you can tell from the type signature of traits). If you run into this and want to improve the API, feel free to open a PR.
 
-
-## What's up with the name maera?
+## Why Maera?
 
 She's one of the main characters in the [Destiny's Crucible series](https://www.goodreads.com/book/show/30985483-cast-under-an-alien-sun). Highly recommended read!
 
