@@ -1,12 +1,10 @@
 use std::{
-    cell::RefCell,
-    sync::{atomic::AtomicU32, Arc, RwLock},
+    sync::{atomic::AtomicU32, Arc},
     time::Duration,
 };
 
 use async_trait::async_trait;
 use ratmom::{
-    config::ExpectContinue,
     cookies::{Cookie, CookieJar},
     AsyncBody, HttpClient, Request, Response,
 };
@@ -68,6 +66,7 @@ pub struct Job<T: JobHandler> {
     pub authorizer: Option<Authorizer>,
     pub base_url: String,
     cookie_jar: CookieJar,
+    #[allow(dead_code)]
     auth_retries: AtomicU32,
 }
 
@@ -217,7 +216,7 @@ impl<T: JobHandler> Maera<T> {
     {
         let builder = ChainableRequestBuilder::from_base_url(job.base_url.clone());
         let req = job.handler.request(builder);
-        let decision = Maera::send_request(client, req.into(), &Arc::clone(&job.handler)).await;
+        Maera::send_request(client, req.into(), &Arc::clone(&job.handler)).await;
         // match decision {
         //     Decision::Authorize => {
         //         Maera::authorize(&client, &job).await.unwrap();
@@ -251,6 +250,6 @@ impl<T: JobHandler> Maera<T> {
                 }
             });
         }
-        tokio::spawn(async move { loop {} }).await
+        Ok(())
     }
 }
