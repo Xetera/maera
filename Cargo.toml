@@ -1,6 +1,6 @@
 [package]
 name = "maera"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "A monitor for periodically scraping websites with genuine browser fingerprints"
 readme = "README.md"

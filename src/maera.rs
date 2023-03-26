@@ -1,18 +1,16 @@
 use std::{
+    str::FromStr,
     sync::{atomic::AtomicU32, Arc},
-    time::Duration,
 };
 
 use async_trait::async_trait;
 use ratmom::{
     cookies::{Cookie, CookieJar},
+    http::Uri,
     AsyncBody, HttpClient, Request, Response,
 };
 
-use crate::{
-    request::{Chain, ChainableRequest},
-    ChainableRequestBuilder,
-};
+use crate::{request::Chain, ChainableRequestBuilder};
 
 // use crate::auth::JobAuthorizer;
 
@@ -38,20 +36,19 @@ pub type AuthorizeNext = Chain<Vec<Cookie>>;
 
 #[async_trait]
 pub trait JobHandler: Send + Sync + 'static {
+    type Response: Send;
     // fn authorize(&self) -> AuthorizeNext {
     //     // no cookies passed up by default
     //     Chain::End(vec![])
     // }
 
-    fn request(&self, builder: ChainableRequestBuilder) -> ChainableRequest;
+    fn request(&self, builder: ChainableRequestBuilder) -> Chain<Self::Response>;
     /// Called when a request is successfully made
-    async fn on_success(&self, response: &mut MaeraResponse) -> Decision;
+    async fn on_success(&self, response: &mut Self::Response) -> Decision;
     /// Called when a request fails
     async fn on_error(&self, _error: MaeraError) -> Decision {
         Decision::Continue
     }
-    /// The schedule for how often the site should be scraped
-    fn wait(&self) -> Duration;
 }
 
 pub type Authorizer = Box<dyn Fn() -> AuthorizeNext + Send + Sync + 'static>;
@@ -183,13 +180,13 @@ impl<T: JobHandler> Maera<T> {
         T: JobHandler,
     {
         if let Some(ref authorize) = &job.authorizer {
-            let chain = authorize();
-            let result = chain.run(client).await?;
-            let builder = ChainableRequestBuilder::from_base_url(job.base_url.clone());
-            let req: MaeraRequest = job.handler.request(builder).into();
+            let cookie_chain = authorize();
+            let result = cookie_chain.run(client).await?;
+            // We can just use the base url for the cookie here that should be
+            let uri = Uri::from_str(&job.base_url).expect("invalid base url");
             for cookie in result.into_iter() {
                 // TODO: error handling hours
-                job.cookie_jar.set(cookie, req.uri()).unwrap();
+                job.cookie_jar.set(cookie, &uri).unwrap();
             }
         }
         Ok(())
@@ -197,14 +194,13 @@ impl<T: JobHandler> Maera<T> {
 
     async fn send_request(
         client: &Arc<HttpClient>,
-        req: Request<AsyncBody>,
+        chain: Chain<T::Response>,
         handler: &Arc<T>,
     ) -> Decision
     where
         T: JobHandler,
     {
-        let response_future = client.send_async(req);
-        match response_future.await {
+        match chain.run(client).await {
             Ok(mut response) => handler.on_success(&mut response).await,
             Err(err) => handler.on_error(err).await,
         }
@@ -215,8 +211,8 @@ impl<T: JobHandler> Maera<T> {
         T: JobHandler,
     {
         let builder = ChainableRequestBuilder::from_base_url(job.base_url.clone());
-        let req = job.handler.request(builder);
-        Maera::send_request(client, req.into(), &Arc::clone(&job.handler)).await;
+        let chain = job.handler.request(builder);
+        Maera::send_request(client, chain, &Arc::clone(&job.handler)).await;
         // match decision {
         //     Decision::Authorize => {
         //         Maera::authorize(&client, &job).await.unwrap();
@@ -245,7 +241,6 @@ impl<T: JobHandler> Maera<T> {
                     // }
                     loop {
                         Maera::run_job(&client, &job).await;
-                        tokio::time::sleep(job.handler.wait()).await;
                     }
                 }
             });

@@ -7,13 +7,16 @@ struct Peet;
 
 #[async_trait]
 impl JobHandler for Peet {
-    fn request(&self, builder: ChainableRequestBuilder) -> ChainableRequest {
-        builder.url("/api/all").build()
+    type Response = MaeraResponse;
+    fn request(&self, builder: ChainableRequestBuilder) -> Chain<Self::Response> {
+        builder
+            .url("/api/all")
+            .delay(Duration::from_secs(60))
+            .build()
+            .into()
     }
-    fn wait(&self) -> Duration {
-        Duration::from_secs(60)
-    }
-    async fn on_success(&self, response: &mut MaeraResponse) -> Decision {
+
+    async fn on_success(&self, response: &mut Self::Response) -> Decision {
         // get JSON from response text
         let body = response.text().await.unwrap();
         let json = from_str::<Value>(&body).unwrap();

@@ -1,21 +1,23 @@
-use ratmom::{cookies::Cookie, http::Method, AsyncBody};
-use std::marker::{Send, Sync};
+use ratmom::{http::Method, AsyncBody};
+use std::{
+    marker::{Send, Sync},
+    time::Duration,
+};
 
 use crate::MaeraResponse;
 
 /// Declarative chaining of requests
 // #[derive(Clone)]
-pub enum Chain<K: Default> {
+pub enum Chain<K> {
     /// Final product
     End(K),
     Next(
         ChainableRequest,
         Box<dyn Fn(MaeraResponse) -> Chain<K> + Sync + Send + 'static>,
     ),
-    One(ChainableRequest),
 }
 
-impl<K: Default> Chain<K> {
+impl<K> Chain<K> {
     pub fn end(k: K) -> Self {
         Chain::End(k)
     }
@@ -25,21 +27,20 @@ impl<K: Default> Chain<K> {
     {
         Chain::Next(request, Box::new(f))
     }
-    pub fn one(request: ChainableRequest) -> Self {
-        Chain::One(request)
-    }
+    /// Executes the chain of requests
     pub(crate) async fn run(self, client: &ratmom::HttpClient) -> Result<K, ratmom::Error> {
         let mut next = self;
+        let mut first_run = true;
         loop {
             match next {
-                Self::One(req) => {
-                    let req: ratmom::http::Request<AsyncBody> = req.into();
-                    client.send_async(req).await?;
-                    return Ok(K::default());
-                }
                 Chain::End(k) => return Ok(k),
-                Chain::Next(request, f) => {
-                    let request: ratmom::http::Request<AsyncBody> = request.into();
+                Chain::Next(chainable, f) => {
+                    // We wanna make sure that we don't sleep on the first run
+                    if !first_run {
+                        tokio::time::sleep(chainable.delay).await;
+                        first_run = false;
+                    }
+                    let request: ratmom::http::Request<AsyncBody> = chainable.into();
                     let result = client.send_async(request).await?;
                     next = f(result);
                 }
@@ -55,14 +56,26 @@ pub struct ChainableRequest {
     /// Headers are all appended
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
+    pub delay: Duration,
 }
 
-/// Helper conversion for the auth method
-impl From<ChainableRequest> for Chain<Vec<Cookie>> {
-    fn from(k: ChainableRequest) -> Self {
-        Chain::one(k)
+impl From<ChainableRequestBuilder> for Chain<MaeraResponse> {
+    fn from(k: ChainableRequestBuilder) -> Self {
+        Chain::next(k.build(), Chain::end)
     }
 }
+
+impl From<ChainableRequest> for Chain<MaeraResponse> {
+    fn from(k: ChainableRequest) -> Self {
+        Chain::next(k, Chain::end)
+    }
+}
+/// Helper conversion for the auth method
+// impl From<ChainableRequest> for Chain<Vec<Cookie>> {
+//     fn from(k: ChainableRequest) -> Self {
+//         Chain::one(k)
+//     }
+// }
 
 #[derive(Default)]
 pub struct ChainableRequestBuilder {
@@ -72,6 +85,7 @@ pub struct ChainableRequestBuilder {
     /// Headers are all appended
     headers: Vec<(String, String)>,
     body: Option<String>,
+    delay: Option<Duration>,
 }
 
 impl ChainableRequestBuilder {
@@ -110,12 +124,18 @@ impl ChainableRequestBuilder {
         self
     }
 
+    pub fn delay(mut self, delay: Duration) -> Self {
+        self.delay = Some(delay);
+        self
+    }
+
     pub fn build(self) -> ChainableRequest {
         ChainableRequest {
             url: self.url.unwrap(),
             method: self.method.unwrap_or(Method::GET),
             headers: self.headers,
             body: self.body,
+            delay: self.delay.unwrap_or_default(),
         }
     }
 }
